@@ -6,6 +6,10 @@ Phone-friendly student signup, organizer check-in, and 150 bubble tea cups that 
 
 **The GitHub Pages demo saves data only in this browser. It does not synchronize across devices and does not send Telegram messages. Use sample details.** The full server implementation is included; shared public hosting and a real Telegram bot still need the account setup below.
 
+![Organizer dashboard with fictitious demo attendees](docs/screenshots/desktop-organizer.jpg)
+
+[Phone signup](docs/screenshots/mobile-signup.jpg) · [Phone confirmation](docs/screenshots/mobile-confirmation.jpg) · [Phone organizer desk](docs/screenshots/mobile-organizer.jpg)
+
 ## What it does
 
 - Students sign up with full name, student ID and optional Telegram handle. IDs are normalized and unique.

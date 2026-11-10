@@ -85,6 +85,7 @@ function renderLogin() {
   });
 }
 function renderOrganizer() {
+  document.title = 'Study Break Night · Organizer';
   main.innerHTML = `<section class="dashboard"><div class="dashboard-heading"><div><span class="eyebrow">${esc(state.event.venue)} / ${esc(state.event.day)} ${esc(state.event.time)}</span><h1>At the door.</h1></div>
     <div class="heading-actions"><button class="button secondary" id="signup-toggle"></button><button class="button primary" id="add-walkin">+ Add walk-in</button></div></div>
     <div class="stats-grid" id="stats"></div><div class="stock-line"><p id="stock-copy"></p><meter id="cup-meter" min="0" max="150" aria-label="Cups allocated out of 150"></meter><span>150 TOTAL</span></div>
@@ -191,6 +192,7 @@ $('#walkin-form').addEventListener('submit', async event => {
   finally { button.disabled = false; }
 });
 window.addEventListener('hashchange', route);
+$('.skip-link').addEventListener('click', event => { event.preventDefault(); main.focus(); main.scrollIntoView({ block: 'start' }); });
 window.addEventListener('storage', () => { if (mode === 'demo' && signedIn && isOrganizer()) refreshOrganizer(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && signedIn && isOrganizer()) refreshOrganizer(); });
 setInterval(() => { if (signedIn && isOrganizer() && !document.hidden) refreshOrganizer(); }, 5000);
