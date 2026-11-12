@@ -53,7 +53,15 @@ The Pages workflow publishes the small redirect in `pages/`. It preserves the `#
 
 GitHub pushes update source, documentation and the Pages redirect. **Worker code changes still need `npx wrangler@latest deploy`**; Cloudflare is not automatically connected to GitHub Builds.
 
-Entries from the old browser-only website are not imported automatically. Export them before clearing browser storage if you need a historical copy. The shared app has no CSV import feature and no public delete-all button.
+Entries from the old browser-only website are not imported automatically. Export them before clearing browser storage if you need a historical copy. The shared app has no CSV import feature or delete-all button. Individual entries can be removed after organizer sign-in using **Remove**, with confirmation.
+
+## Remove mistaken entries
+
+Choose **Remove** on the student's row and verify their name and student ID before confirming. Uncollected entries are deleted and their reserved cup returns to stock. A collected entry is hidden rather than erased: the original record remains in D1, its cup stays counted as handed out and its student ID cannot claim another cup. The app has no undo control.
+
+Migration `0002_remove_attendees.sql` adds the collection-record marker table. Apply remote migrations before deploying Worker code that uses removal. It does not clear existing attendees or cup allocations. The Node host applies this idempotent schema addition on startup.
+
+The deployed removal endpoint was checked using a temporary test-only registration. It rejected an anonymous delete, removed the authenticated test entry, safely handled a repeat request and restored the original cup availability. Existing attendees were retained. The local suite has 27 passing tests, including removal-versus-collection races and retained handed-out stock.
 
 ## Set up a separate Cloudflare account
 
@@ -112,7 +120,7 @@ The webhook must remain publicly reachable over HTTPS; it verifies its secret he
 - Check physical student ID, then record attendance and cup collection separately.
 - Keep both organizer devices online and the organizer password available.
 - Export CSV for Sheets/Excel reports. Export is a snapshot, not automatic synchronization or a restorable database backup.
-- Agree on retention of student data and use Cloudflare database management for any required deletion; the shared UI has no reset button.
+- Agree on retention of student data. Use **Remove** for mistaken individual entries; collected entries retain their database record for stock accounting. Full personal-data erasure or a complete event reset requires separate database management.
 - Keep a manual fallback for outages. No-show reservations are not automatically released.
 
 ## References

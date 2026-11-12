@@ -4,6 +4,7 @@ export function openDatabase(filename = ':memory:') {
   const sqlite = new DatabaseSync(filename);
   sqlite.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
   sqlite.exec(readFileSync(new URL('../migrations/0001_initial.sql', import.meta.url), 'utf8'));
+  sqlite.exec(readFileSync(new URL('../migrations/0002_remove_attendees.sql', import.meta.url), 'utf8'));
   const prepare = (sql, args = []) => ({
     bind(...bindings) { return prepare(sql, bindings); },
     async first() { return sqlite.prepare(sql).get(...args) || null; },

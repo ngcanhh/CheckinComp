@@ -35,12 +35,13 @@ function attendee(row) {
 const JOIN = `SELECT a.*, c.number AS cup_number, c.collected_at, t.status AS telegram_status
   FROM attendees a LEFT JOIN cups c ON c.attendee_id = a.id
   LEFT JOIN telegram_outbox t ON t.attendee_id = a.id`;
-async function getAttendee(db, id) { return attendee(await db.prepare(`${JOIN} WHERE a.id = ?`).bind(id).first()); }
+const ACTIVE = 'NOT EXISTS (SELECT 1 FROM removed_attendees r WHERE r.attendee_id = a.id)';
+async function getAttendee(db, id) { return attendee(await db.prepare(`${JOIN} WHERE a.id = ? AND ${ACTIVE}`).bind(id).first()); }
 async function getStats(db) {
   const counts = await db.prepare(`SELECT
     SUM(CASE WHEN source = 'registration' THEN 1 ELSE 0 END) AS signups,
     SUM(CASE WHEN source = 'walkin' THEN 1 ELSE 0 END) AS walkins,
-    SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checkedIn FROM attendees`).first();
+    SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checkedIn FROM attendees a WHERE ${ACTIVE}`).first();
   const cups = await db.prepare(`SELECT
     SUM(CASE WHEN attendee_id IS NOT NULL AND collected_at IS NULL THEN 1 ELSE 0 END) AS reserved,
     SUM(CASE WHEN collected_at IS NOT NULL THEN 1 ELSE 0 END) AS collected,
@@ -117,6 +118,8 @@ export async function handleApi(request, env) {
     if (path === '/api/event' && request.method === 'GET') return json(await eventState(env));
     if (path === '/api/registrations' && request.method === 'POST') {
       const input = validateAttendee(await body(request)), id = crypto.randomUUID(), token = secret();
+      const removed = await env.DB.prepare(`SELECT a.id FROM attendees a JOIN removed_attendees r ON r.attendee_id = a.id WHERE a.student_id = ?`).bind(input.studentId).first();
+      if (removed) fail('This student ID has already collected a cup, even though its entry was removed. Ask an organizer for help.', 409);
       await env.DB.prepare(`INSERT INTO attendees
         (id, name, student_id, telegram, source, created_at, telegram_token_hash, telegram_token_expires)
         VALUES (?, ?, ?, ?, 'registration', ?, ?, ?)`)
@@ -153,8 +156,29 @@ export async function handleApi(request, env) {
         return json({ ok: true }, 200, { 'Set-Cookie': 'sb_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0' });
       }
       if (path === '/api/admin/attendees' && request.method === 'GET') {
-        const rows = await env.DB.prepare(`${JOIN} ORDER BY a.created_at DESC, a.id`).all();
+        const rows = await env.DB.prepare(`${JOIN} WHERE ${ACTIVE} ORDER BY a.created_at DESC, a.id`).all();
         return json({ ...(await eventState(env)), attendees: rows.results.map(attendee) });
+      }
+      const removal = /^\/api\/admin\/attendees\/([a-zA-Z0-9-]+)$/.exec(path);
+      if (removal && request.method === 'DELETE') {
+        const id = removal[1];
+        const existing = await getAttendee(env.DB, id);
+        if (!existing) return json({ removed: true, alreadyRemoved: true, ...(await eventState(env)) });
+        // D1 batch is transactional. Recheck collection inside every statement so a
+        // simultaneous collection cannot return a physically handed-out cup to stock.
+        await env.DB.batch([
+          env.DB.prepare('UPDATE cups SET attendee_id = NULL WHERE attendee_id = ? AND collected_at IS NULL').bind(id),
+          env.DB.prepare('DELETE FROM telegram_outbox WHERE attendee_id = ?').bind(id),
+          env.DB.prepare(`INSERT OR IGNORE INTO removed_attendees (attendee_id, removed_at)
+            SELECT id, ? FROM attendees WHERE id = ?
+            AND EXISTS (SELECT 1 FROM cups WHERE attendee_id = ? AND collected_at IS NOT NULL)`).bind(now(), id, id),
+          env.DB.prepare(`UPDATE attendees SET telegram_token_hash = NULL, telegram_token_expires = NULL, telegram_chat_id = NULL
+            WHERE id = ? AND EXISTS (SELECT 1 FROM removed_attendees WHERE attendee_id = ?)`).bind(id, id),
+          env.DB.prepare(`DELETE FROM attendees WHERE id = ?
+            AND NOT EXISTS (SELECT 1 FROM cups WHERE attendee_id = ? AND collected_at IS NOT NULL)`).bind(id, id),
+        ]);
+        const retained = await env.DB.prepare('SELECT attendee_id FROM removed_attendees WHERE attendee_id = ?').bind(id).first();
+        return json({ removed: true, alreadyRemoved: false, collectedCupRetained: Boolean(retained), ...(await eventState(env)) });
       }
       if (path === '/api/admin/signup' && request.method === 'PATCH') {
         const input = await body(request);
@@ -165,7 +189,11 @@ export async function handleApi(request, env) {
       if (path === '/api/admin/walk-ins' && request.method === 'POST') {
         const input = validateAttendee(await body(request));
         const existing = await env.DB.prepare('SELECT id FROM attendees WHERE student_id = ?').bind(input.studentId).first();
-        if (existing) return json({ attendee: await getAttendee(env.DB, existing.id), existing: true });
+        if (existing) {
+          const person = await getAttendee(env.DB, existing.id);
+          if (!person) fail('This student ID belongs to a removed entry that already collected a cup. It cannot claim another cup.', 409);
+          return json({ attendee: person, existing: true });
+        }
         const id = crypto.randomUUID();
         await env.DB.prepare(`INSERT OR IGNORE INTO attendees (id, name, student_id, telegram, source, created_at, checked_in_at)
           VALUES (?, ?, ?, ?, 'walkin', ?, ?)`)
@@ -173,7 +201,9 @@ export async function handleApi(request, env) {
         const inserted = await getAttendee(env.DB, id);
         if (inserted) return json({ attendee: inserted, existing: false }, 201);
         const raced = await env.DB.prepare('SELECT id FROM attendees WHERE student_id = ?').bind(input.studentId).first();
-        return json({ attendee: await getAttendee(env.DB, raced.id), existing: true });
+        const person = raced && await getAttendee(env.DB, raced.id);
+        if (!person) fail('The attendee list changed. Refresh and try again.', 409);
+        return json({ attendee: person, existing: true });
       }
       const action = /^\/api\/admin\/attendees\/([a-zA-Z0-9-]+)\/(check-in|collect)$/.exec(path);
       if (action && request.method === 'POST') {
@@ -181,7 +211,9 @@ export async function handleApi(request, env) {
         if (!existing) fail('Attendee not found.', 404);
         if (verb === 'check-in') {
           await env.DB.prepare('UPDATE attendees SET checked_in_at = COALESCE(checked_in_at, ?) WHERE id = ?').bind(now(), id).run();
-          return json({ attendee: await getAttendee(env.DB, id), alreadyDone: Boolean(existing.checkedInAt) });
+          const updated = await getAttendee(env.DB, id);
+          if (!updated) fail('This attendee was removed. Refresh the list.', 404);
+          return json({ attendee: updated, alreadyDone: Boolean(existing.checkedInAt) });
         }
         if (!existing.checkedInAt) fail('Check this student in before handing out a cup.', 409);
         const claimed = await env.DB.prepare(`UPDATE cups SET attendee_id = ?, collected_at = ?
@@ -191,6 +223,7 @@ export async function handleApi(request, env) {
           AND EXISTS (SELECT 1 FROM attendees WHERE id = ? AND checked_in_at IS NOT NULL)
           RETURNING number`).bind(id, now(), id, id, id).first();
         const updated = await getAttendee(env.DB, id);
+        if (!updated) fail('This attendee was removed. Refresh the list.', 404);
         if (!claimed && !updated.collectedAt) fail('All 150 cups are reserved or collected. Check-in is still available.', 409);
         return json({ attendee: updated, alreadyDone: !claimed });
       }

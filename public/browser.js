@@ -39,7 +39,16 @@ function request(path, method, input) {
   if (path === 'event') return state(data);
   if (path === 'session') { signedIn = method === 'POST'; return { ok: true }; }
   if (path.startsWith('admin/') && !signedIn) throw Object.assign(new Error('Please open the organizer desk.'), { status: 401 });
-  if (path === 'admin/attendees') return { ...state(data), attendees: data.attendees.slice().reverse() };
+  if (path === 'admin/attendees') return { ...state(data), attendees: data.attendees.filter(a => !a.removedAt).reverse() };
+  const removal = /^admin\/attendees\/([^/]+)$/.exec(path);
+  if (removal && method === 'DELETE') {
+    const a = data.attendees.find(a => a.id === removal[1] && !a.removedAt);
+    if (!a) return { removed: true, alreadyRemoved: true, ...state(data) };
+    if (a.collectedAt) a.removedAt = stamp();
+    else data.attendees = data.attendees.filter(person => person.id !== a.id);
+    write(data);
+    return { removed: true, alreadyRemoved: false, collectedCupRetained: Boolean(a.collectedAt), ...state(data) };
+  }
   if (path === 'admin/signup' && method === 'PATCH') { data.signupOpen = input.open; write(data); return state(data); }
   if (path === 'admin/reset' && method === 'POST') { write(initial()); return state(initial()); }
   if ((path === 'registrations' || path === 'admin/walk-ins') && method === 'POST') {
@@ -47,6 +56,7 @@ function request(path, method, input) {
     if (!walkin && !data.signupOpen) throw new Error('Signup is closed. You can still check in at the door.');
     const existing = data.attendees.find(a => a.studentId === details.studentId);
     if (existing) {
+      if (existing.removedAt) throw new Error('This student ID has already collected a cup, even though its entry was removed. Ask an organizer for help.');
       if (walkin) return { attendee: existing, existing: true };
       throw new Error('This student ID is already registered. Ask an organizer to find your entry.');
     }
@@ -58,7 +68,7 @@ function request(path, method, input) {
   }
   const match = /^admin\/attendees\/([^/]+)\/(check-in|collect)$/.exec(path);
   if (match && method === 'POST') {
-    const a = data.attendees.find(a => a.id === match[1]);
+    const a = data.attendees.find(a => a.id === match[1] && !a.removedAt);
     if (!a) throw new Error('Attendee not found.');
     let alreadyDone;
     if (match[2] === 'check-in') { alreadyDone = Boolean(a.checkedInAt); a.checkedInAt ||= stamp(); }

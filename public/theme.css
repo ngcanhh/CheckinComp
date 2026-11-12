@@ -1054,6 +1054,21 @@ meter::-moz-meter-bar {
   font-size: 12px
 }
 
+.row-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap
+}
+
+.remove-button {
+  color: var(--danger);
+  background: white;
+  border-color: #dfb7b7;
+  min-height: 44px
+}
+
 #empty-state {
   text-align: center;
   padding: 55px 25px
@@ -1590,6 +1605,13 @@ dialog form>p:last-child {
     min-height: 44px;
     width: 100%;
     font-size: 13px
+  }
+  .row-actions {
+    width: 100%
+  }
+  .row-actions > .row-button {
+    width: auto;
+    flex: 1
   }
   .completed {
     padding: 7px 0;

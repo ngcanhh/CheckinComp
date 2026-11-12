@@ -82,3 +82,28 @@ test('browser reports storage write failures instead of claiming registration su
   await assert.rejects(signup(1), /Cannot save entries/);
   assert.equal((await request('event')).stats.signups, 0);
 });
+
+test('browser removal releases uncollected reservations and permits corrected registration', async t => {
+  await setup(t); await request('session', 'POST');
+  const { attendee } = await signup(1);
+  await request(`admin/attendees/${attendee.id}/check-in`, 'POST');
+  const removed = await request(`admin/attendees/${attendee.id}`, 'DELETE');
+  assert.equal(removed.stats.available, 150); assert.equal(removed.stats.checkedIn, 0);
+  assert.deepEqual((await request('admin/attendees')).attendees, []);
+  assert.equal((await request(`admin/attendees/${attendee.id}`, 'DELETE')).alreadyRemoved, true);
+  assert.ok((await signup(1)).attendee.cupNumber);
+});
+
+test('browser removal keeps collected stock and blocks duplicate claims for the removed ID', async t => {
+  await setup(t); await request('session', 'POST');
+  const { attendee } = await signup(1);
+  await request(`admin/attendees/${attendee.id}/check-in`, 'POST');
+  await request(`admin/attendees/${attendee.id}/collect`, 'POST');
+  const removed = await request(`admin/attendees/${attendee.id}`, 'DELETE');
+  assert.equal(removed.collectedCupRetained, true);
+  assert.equal(removed.stats.collected, 1); assert.equal(removed.stats.available, 149);
+  assert.equal(removed.stats.signups, 0); assert.equal(removed.stats.checkedIn, 0);
+  assert.deepEqual((await request('admin/attendees')).attendees, []);
+  await assert.rejects(signup(1), /already collected/);
+  await assert.rejects(request(`admin/attendees/${attendee.id}/collect`, 'POST'), /not found/);
+});

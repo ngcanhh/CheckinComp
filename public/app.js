@@ -162,11 +162,29 @@ function renderRows() {
     else action = '<span class="muted small">No cup available</span>';
     return `<tr><td class="student-cell"><div class="avatar" aria-hidden="true">${esc(a.name.split(' ').map(n => n[0]).slice(0, 2).join(''))}</div><div><strong>${esc(a.name)}</strong><span>${esc(a.studentId)} <span class="source-label">${a.source === 'walkin' ? 'Walk-in' : 'Signed up'}</span></span><span class="telegram-handle">${a.telegram ? `@${esc(a.telegram)}` : 'No Telegram'}${a.telegramStatus === 'sent' ? ' · Confirmed' : a.telegramStatus === 'failed' ? ' · Delivery failed' : ''}</span></div></td>
       <td data-label="Attendance"><span class="badge ${a.checkedInAt ? 'checked' : 'waiting'}">${a.checkedInAt ? 'Checked in' : 'Not checked in'}</span></td>
-      <td data-label="Bubble tea"><span class="badge ${a.collectedAt ? 'collected' : a.cupNumber ? 'reserved' : 'no-reservation'}">${a.collectedAt ? `Collected #${a.cupNumber}` : a.cupNumber ? `Reserved #${a.cupNumber}` : 'No reservation'}</span></td><td class="action-cell">${action}</td></tr>`;
+      <td data-label="Bubble tea"><span class="badge ${a.collectedAt ? 'collected' : a.cupNumber ? 'reserved' : 'no-reservation'}">${a.collectedAt ? `Collected #${a.cupNumber}` : a.cupNumber ? `Reserved #${a.cupNumber}` : 'No reservation'}</span></td><td class="action-cell"><div class="row-actions">${action}<button class="button row-button remove-button" data-remove="${esc(a.id)}" aria-label="Remove ${esc(a.name)} (${esc(a.studentId)})" ${disabled ? 'disabled' : ''}>Remove</button></div></td></tr>`;
   }).join('');
   const empty = $('#empty-state'); empty.hidden = list.length > 0;
   empty.innerHTML = attendees.length ? '<h3>No matching students.</h3><p>Try their full student ID or clear the filters.</p>' : `<span class="empty-mark" aria-hidden="true">↳</span><h3>No attendees yet</h3><p>${mode === 'browser' ? 'Register students on this device, or add a walk-in at the door.' : 'Share the signup page, or add your first walk-in at the door.'}</p>`;
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => performAction(button.dataset.id, button.dataset.action)));
+  document.querySelectorAll('[data-remove]').forEach(button => button.addEventListener('click', () => removeAttendee(button.dataset.remove)));
+}
+async function removeAttendee(id) {
+  const person = attendees.find(a => a.id === id);
+  if (!person || pending.has(id) || disconnected) return;
+  if (!confirm(`Remove ${person.name} (${person.studentId})?\n\nThis removes their registration and check-in from the list. Uncollected reservations return to stock. Cups already handed out stay counted and that student ID cannot claim another cup.\n\nThis cannot be undone from the app.`)) return;
+  pending.add(id); renderRows();
+  try {
+    const result = await api(`admin/attendees/${id}`, 'DELETE');
+    attendees = attendees.filter(a => a.id !== id); state = result;
+    if (receipt?.attendee?.id === id) { receipt = undefined; try { sessionStorage.removeItem(`${mode}-receipt-v2`); } catch {} }
+    updateDashboard();
+    toast(result.alreadyRemoved ? 'This entry was already removed.' : result.collectedCupRetained
+      ? `${person.name} removed. Their handed-out cup stays counted.`
+      : `${person.name} removed. Any uncollected cup reservation was released.`);
+    await refreshOrganizer();
+  } catch (error) { toast(error.message, true); await refreshOrganizer(); }
+  finally { pending.delete(id); renderRows(); }
 }
 async function performAction(id, action) {
   if (pending.has(id) || disconnected) return;

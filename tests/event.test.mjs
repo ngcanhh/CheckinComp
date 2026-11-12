@@ -42,6 +42,69 @@ test('normalized duplicate student IDs cannot allocate another cup or reveal a r
   assert.equal(duplicate.status, 409); assert.equal(duplicate.data.attendee, undefined);
   assert.equal((await request('event')).data.stats.reserved, 1);
 });
+test('removing an uncollected attendee releases its reservation, Telegram job and student ID', async t => {
+  const { signup, request, login, env } = await setup(t);
+  const a = (await signup(1)).data.attendee;
+  await env.DB.prepare('INSERT INTO telegram_outbox (attendee_id, chat_id) VALUES (?, ?)').bind(a.id, 'test-chat').run();
+  await login();
+  await request(`admin/attendees/${a.id}/check-in`, 'POST', {});
+  const removed = await request(`admin/attendees/${a.id}`, 'DELETE');
+  assert.equal(removed.status, 200); assert.equal(removed.data.collectedCupRetained, false);
+  assert.equal(removed.data.stats.available, 150); assert.equal(removed.data.stats.checkedIn, 0);
+  assert.equal((await request('admin/attendees')).data.attendees.length, 0);
+  assert.equal(await env.DB.prepare('SELECT attendee_id FROM telegram_outbox WHERE attendee_id = ?').bind(a.id).first(), null);
+  assert.equal((await request(`admin/attendees/${a.id}`, 'DELETE')).data.alreadyRemoved, true);
+  assert.equal((await signup(1)).status, 201);
+  assert.equal((await request('event')).data.stats.reserved, 1);
+});
+
+test('removing a collected attendee hides the entry without returning a consumed cup or allowing a second claim', async t => {
+  const { signup, request, login, env } = await setup(t); await login();
+  const a = (await signup(1)).data.attendee;
+  await request(`admin/attendees/${a.id}/check-in`, 'POST', {});
+  await request(`admin/attendees/${a.id}/collect`, 'POST', {});
+  const removed = await request(`admin/attendees/${a.id}`, 'DELETE');
+  assert.equal(removed.status, 200); assert.equal(removed.data.collectedCupRetained, true);
+  assert.equal(removed.data.stats.collected, 1); assert.equal(removed.data.stats.available, 149);
+  assert.equal(removed.data.stats.signups, 0); assert.equal(removed.data.stats.checkedIn, 0);
+  assert.deepEqual((await request('admin/attendees')).data.attendees, []);
+  assert.equal((await signup(1)).status, 409);
+  assert.equal((await request('admin/walk-ins', 'POST', { name: 'Same Student', studentId: a.studentId })).status, 409);
+  assert.equal((await request(`admin/attendees/${a.id}/collect`, 'POST', {})).status, 404);
+  assert.equal((await request(`admin/attendees/${a.id}`, 'DELETE')).data.alreadyRemoved, true);
+  const record = await env.DB.prepare('SELECT telegram_token_hash FROM attendees WHERE id = ?').bind(a.id).first();
+  assert.equal(record.telegram_token_hash, null);
+});
+
+test('removal requires organizer authentication and rejects cross-origin deletion', async t => {
+  const { signup, request, login } = await setup(t);
+  const a = (await signup(1)).data.attendee;
+  assert.equal((await request(`admin/attendees/${a.id}`, 'DELETE')).status, 401);
+  await login();
+  assert.equal((await request(`admin/attendees/${a.id}`, 'DELETE', undefined, { origin: 'https://other.test' })).status, 403);
+  assert.equal((await request('admin/attendees')).data.attendees.length, 1);
+});
+
+test('concurrent deletion and collection never return a collected cup to stock', async t => {
+  const { signup, request, login, env } = await setup(t); await login();
+  for (let i = 0; i < 12; i++) {
+    const a = (await signup(i)).data.attendee;
+    await request(`admin/attendees/${a.id}/check-in`, 'POST', {});
+    const operations = [
+      () => request(`admin/attendees/${a.id}`, 'DELETE'),
+      () => request(`admin/attendees/${a.id}/collect`, 'POST', {}),
+    ];
+    if (i % 2) operations.reverse();
+    const results = await Promise.all(operations.map(op => op()));
+    assert.ok(results.every(r => r.status === 200 || r.status === 404));
+    const handedOut = results.some(r => r.data.attendee?.collectedAt);
+    const cup = await env.DB.prepare('SELECT attendee_id, collected_at FROM cups WHERE attendee_id = ?').bind(a.id).first();
+    if (handedOut) assert.ok(cup?.collected_at);
+    assert.deepEqual((await request('admin/attendees')).data.attendees, []);
+    const stats = (await request('event')).data.stats;
+    assert.equal(stats.reserved + stats.collected + stats.available, 150);
+  }
+});
 test('walk-ins cannot take reserved cups; remaining stock stays consistent for later signups', async t => {
   const { request, signup, login } = await setup(t); await login();
   const w = (await request('admin/walk-ins', 'POST', { name: 'Walk In', studentId: 'WALK0001' })).data.attendee;

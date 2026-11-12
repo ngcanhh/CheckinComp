@@ -13,10 +13,11 @@ export function validateAttendee(input) {
   return { name, studentId, telegram };
 }
 export function statistics(attendees) {
+  const active = attendees.filter(a => !a.removedAt);
   const collected = attendees.filter(a => a.collectedAt).length;
   const reserved = attendees.filter(a => a.cupNumber && !a.collectedAt).length;
-  return { signups: attendees.filter(a => a.source === 'registration').length,
-    walkins: attendees.filter(a => a.source === 'walkin').length,
-    checkedIn: attendees.filter(a => a.checkedInAt).length,
+  return { signups: active.filter(a => a.source === 'registration').length,
+    walkins: active.filter(a => a.source === 'walkin').length,
+    checkedIn: active.filter(a => a.checkedInAt).length,
     reserved, collected, available: CUP_LIMIT - reserved - collected, total: CUP_LIMIT };
 }
