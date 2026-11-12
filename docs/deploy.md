@@ -14,7 +14,7 @@ All phones use the same attendee list and the same 150 cup slots. The host compu
 
 Initial checks confirmed the public API in shared server mode, zero attendees, 150 unreserved cups, and a configured organizer secret. The owner confirmed successful organizer login. Automated tests ran before deployment; physical two-phone event testing remains a final acceptance check.
 
-The organizer password is stored as the Cloudflare secret `ADMIN_PASSWORD`. It is separate from the password used for a local Node server. Keep it with the event team; do not put it in source, screenshots or GitHub.
+The organizer password is stored at runtime as the Cloudflare secret `ADMIN_PASSWORD`, separately from the local Node password. For the public evaluation site, the owner has explicitly published the password **`Computing`** in the README. No username is required. Anyone with this login can view/export attendee details and use organizer controls; use fictitious data for public reviews. Cloudflare credentials and Telegram tokens remain private.
 
 ## Update the existing deployment
 
@@ -45,7 +45,7 @@ To replace the organizer password, type it interactively in your own Terminal:
 npx wrangler@latest secret put ADMIN_PASSWORD
 ```
 
-Do not paste the password into a shell command, chat, `.env.example` or GitHub. Changing this secret does not revoke existing organizer sessions; they expire after 12 hours.
+The current evaluation password is intentionally public. Before using the site for real student records, replace it with a private password and update the public access instructions. Keep private credentials out of shell commands, `.env.example` and GitHub. Changing `ADMIN_PASSWORD` does not revoke existing organizer sessions; they expire after 12 hours.
 
 ## GitHub and the old Pages link
 

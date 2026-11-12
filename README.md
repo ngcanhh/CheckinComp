@@ -6,6 +6,10 @@ Phone-friendly student registration, organizer check-in and a shared limit of 15
 
 [Organizer sign-in](https://study-break-checkin.study-break-checkin.workers.dev/#organizer) · [Hosting guide](docs/deploy.md) · [GitHub Pages entry point](https://ngcanhh.github.io/CheckinComp/)
 
+**Organizer password: `Computing`** (case-sensitive; no username required).
+
+This organizer login is intentionally public for evaluation. Anyone who reads it can view/export attendee details and use the organizer controls. Use fictitious student details when reviewing this public version.
+
 The live app runs on **Cloudflare Workers + D1**. Students can register on their own phones, and organizers see the same list and cup totals on other devices. Entries stay in a shared database when phones or the host computer are closed. The app starts with no preloaded students.
 
 [Phone registration](docs/screenshots/shared-phone-signup.jpg) · [Organizer sign-in](docs/screenshots/shared-phone-signin.jpg)
@@ -14,7 +18,7 @@ The live app runs on **Cloudflare Workers + D1**. Students can register on their
 
 1. Share the live website with students. Registration asks for full name, student ID and an optional Telegram username.
 2. While cups remain, registration reserves one cup. The confirmation shows the event details and cup status. After all 150 cups are allocated, students can still register without a cup reservation.
-3. Organizers choose **Organizer**, then sign in using the event's organizer password. Each device gets its own session.
+3. Choose **Organizer** and sign in with the password above. Each device gets its own session.
 4. Find the student, check their physical ID, tap **Check in**, then **Hand out cup** when they collect it. Attendance and collection are separate.
 5. Use **+ Add walk-in** for an unregistered arrival. Walk-ins can collect only unreserved cups.
 6. Use **Close signup** to stop online registration. Organizer check-in and walk-ins can continue.
@@ -85,7 +89,7 @@ The existing D1 database survives Worker deployments. Apply remote migrations on
 
 The [Pages workflow](.github/workflows/pages.yml) runs checks and tests, then publishes the `pages/` redirect from `codex/event-checkin` or `main`. A GitHub push updates that redirect and documentation; it does not automatically deploy changes to the Cloudflare Worker.
 
-Keep `.env`, `.dev.vars`, `.wrangler/`, `data/`, passwords and bot credentials out of Git. The D1 database ID in `wrangler.toml` is a resource identifier, not an API credential.
+Keep `.env`, `.dev.vars`, `.wrangler/`, `data/`, Cloudflare credentials and bot tokens out of Git. Only the owner-approved public organizer login is documented here. The D1 database ID in `wrangler.toml` is a resource identifier, not an API credential.
 
 ## Telegram
 
@@ -102,14 +106,14 @@ npm test
 
 The 21 automated tests cover 151 signups against the 150-cup cap, duplicate IDs, walk-ins, concurrent shared database actions, signup closure, authentication, Worker transport, Telegram retries, CSV encoding/formula protection and the optional browser-storage implementation.
 
-Deployment checks confirmed HTTPS access, shared server mode, zero initial attendees, 150 unreserved cup slots and password-protected organizer access. The owner confirmed a successful login. Physical two-phone signup/check-in testing remains an event acceptance check.
+Deployment checks confirmed HTTPS access, shared server mode, zero initial attendees, 150 unreserved cup slots and organizer login. The published `Computing` password was verified against the live server, and the verification session was signed out. Physical two-phone signup/check-in testing remains an event acceptance check.
 
 What can break at the door:
 
 - **Internet/hosting outage:** shared mode needs connectivity. The last list is retained and door actions are disabled when stale. There is no offline queue; keep a manual fallback and reconcile before resuming cup claims.
 - **Eligibility:** unique IDs do not prove identity. Staff should check physical student ID.
 - **Session/password:** organizers need the event password and may need to sign in again after 12 hours. The Cloudflare organizer password is configured separately from the local password file.
-- **Privacy/retention:** names, student IDs and Telegram handles are event data. Restrict organizer access and decide retention after the event. There is no public delete-all control.
+- **Public organizer access:** the published login lets readers view/export attendee records and change event state. Before collecting real student details, rotate to a private organizer password and restrict access. Decide retention after the event. There is no public delete-all control.
 - **Event setup:** the exact date and optional Telegram bot still need organizer configuration.
 - **Hosting limits:** Workers and D1 free tiers have quotas. CSV is not a database backup or an automatic Sheets connection.
 
