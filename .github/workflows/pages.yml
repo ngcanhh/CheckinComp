@@ -22,14 +22,14 @@ jobs:
         with:
           node-version: '24'
       - run: npm run check
+      - run: node --check pages/redirect.js
       - run: npm test
       - uses: actions/configure-pages@v5
-      - name: Prepare the device-storage website
+      - name: Prepare the shared website redirect
         shell: bash
         run: |
           mkdir -p _site
-          cp public/index.html public/app.js public/browser.js public/domain.js public/export.js public/styles.css public/theme.css public/favicon.svg _site/
-          printf '{"mode":"browser"}\n' > _site/deployment.json
+          cp pages/index.html pages/redirect.js _site/
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v4
         with:

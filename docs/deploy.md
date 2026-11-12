@@ -1,92 +1,124 @@
-# Hosting Study Break Night
+# Hosting and operating Study Break Night
 
-## Public website: GitHub Pages
+## Live shared website
 
-**Live URL:** https://ngcanhh.github.io/CheckinComp/
+- Website: https://study-break-checkin.study-break-checkin.workers.dev/
+- Organizer sign-in: https://study-break-checkin.study-break-checkin.workers.dev/#organizer
+- Old entry point: https://ngcanhh.github.io/CheckinComp/ (redirects to the shared website)
+- Worker: `study-break-checkin`
+- Database: `study-break-checkin`, bound to the Worker as `DB`
+- Storage: Cloudflare D1, with the primary database in APAC
+- Mode: `server` in `public/deployment.json`
 
-The blue/orange app starts without preloaded students and stores entries in the current browser. It supports registration, check-in, a 150-cup limit on that device, walk-ins and CSV export. It does not share lists between phones, require an organizer password or send Telegram messages. Use one event desk device.
+All phones use the same attendee list and the same 150 cup slots. The host computer can be switched off. The shared deployment begins without preloaded students.
 
-The `.github/workflows/pages.yml` workflow publishes from `codex/event-checkin` or `main`. It checks syntax, runs tests and copies the complete frontend including `browser.js` and `export.js`. Only the Pages artifact receives `deployment.json` with `mode: "browser"`; the local/shared app keeps `mode: "server"`.
+Initial checks confirmed the public API in shared server mode, zero attendees, 150 unreserved cups, and a configured organizer secret. The owner confirmed successful organizer login. Automated tests ran before deployment; physical two-phone event testing remains a final acceptance check.
 
-After pushing, wait for **Publish Study Break Night** in GitHub Actions. Open the website and check **Organizer → Open organizer desk**. There is no student-seeding button. Older fixture records are removed on upgrade, while manually entered entries are retained.
+The organizer password is stored as the Cloudflare secret `ADMIN_PASSWORD`. It is separate from the password used for a local Node server. Keep it with the event team; do not put it in source, screenshots or GitHub.
 
-## Shared hosting: Cloudflare Workers + D1
+## Update the existing deployment
 
-For students to register on their own phones and organizers to see one shared list, deploy the Worker + D1 version below. The app and database can use Cloudflare's free tiers, subject to their current limits. No paid add-ons or custom domain are needed. This is a separate deployment from GitHub Pages.
-
-## 1. Create an account and sign in
-
-Create a [Cloudflare account](https://dash.cloudflare.com/sign-up). Install Node.js 24 LTS, which normally includes npm. In this project's directory, run:
-
-```sh
-npx wrangler login
-```
-
-Complete the sign-in in your own browser. Never send passwords or Cloudflare API tokens in chat.
-
-## 2. Create the shared database
+From this project directory, with Node.js 24 or newer:
 
 ```sh
-npx wrangler d1 create study-break-checkin
+npx wrangler@latest login
+npx wrangler@latest whoami
+npm run check
+npm test
+npx wrangler@latest deploy
 ```
 
-Copy the returned `database_id` into `wrangler.toml`, replacing `REPLACE_WITH_YOUR_D1_DATABASE_ID`. Keep `binding = "DB"`.
+Login is needed only when the existing session is missing or expired. The deploy output prints the public URL. Keep `binding = "DB"` and the existing database ID in `wrangler.toml`; publishing code does not recreate the database or erase attendees.
+
+When a new migration file is added:
 
 ```sh
-npx wrangler d1 migrations apply study-break-checkin --remote
+npx wrangler@latest d1 migrations apply study-break-checkin --remote
+npx wrangler@latest deploy
 ```
 
-The migration creates the event settings, attendees, 150 cup slots and organizer sessions. It does not seed fake students.
+Use `--remote` for the hosted database. Local Wrangler data and local `data/event.sqlite` are separate stores.
 
-## 3. Publish the app and protect organizer access
+To replace the organizer password, type it interactively in your own Terminal:
 
 ```sh
-npx wrangler deploy
-npx wrangler secret put ADMIN_PASSWORD
+npx wrangler@latest secret put ADMIN_PASSWORD
 ```
 
-Enter a strong password at the prompt. Give it only to the organizers; both devices can use the same password with independent sessions. Complete this step **before sharing the site**. The organizer API refuses login until this secret exists.
+Do not paste the password into a shell command, chat, `.env.example` or GitHub. Changing this secret does not revoke existing organizer sessions; they expire after 12 hours.
 
-Open the `workers.dev` URL printed by Wrangler. Verify signup on one phone and check-in on a second device. Use this URL for a shared event database. There is no separate frontend build or CORS configuration. It starts without student fixtures. Update the README's primary link only after verifying this deployment.
+## GitHub and the old Pages link
 
-To publish edits later, run `npx wrangler deploy` again. Run migrations again only when adding a new migration. The D1 database survives Worker deployments.
+The Pages workflow publishes the small redirect in `pages/`. It preserves the `#organizer` fragment when JavaScript runs, and includes a direct link as a fallback. It no longer publishes an independent browser-storage event list.
 
-## 4. Connect Telegram (optional)
+GitHub pushes update source, documentation and the Pages redirect. **Worker code changes still need `npx wrangler@latest deploy`**; Cloudflare is not automatically connected to GitHub Builds.
 
-1. In Telegram, open [@BotFather](https://t.me/BotFather), send `/newbot`, and choose a name and username. Keep the returned token private.
-2. Add the three Worker secrets below, entering each value at its prompt. The username has no `@` prefix. The webhook secret should be a long random string containing only letters, digits, `_` or `-`.
+Entries from the old browser-only website are not imported automatically. Export them before clearing browser storage if you need a historical copy. The shared app has no CSV import feature and no public delete-all button.
+
+## Set up a separate Cloudflare account
+
+These steps are for a new deployment, not for routine updates to the existing event:
+
+1. Create a [Cloudflare account](https://dash.cloudflare.com/sign-up), verify its email and run `npx wrangler@latest login`.
+2. Create a fresh database:
 
 ```sh
-npx wrangler secret put TELEGRAM_BOT_TOKEN
-npx wrangler secret put TELEGRAM_BOT_USERNAME
-npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+npx wrangler@latest d1 create study-break-checkin --location apac --update-config=false
 ```
 
-3. Copy `.env.example` to a local `.env`. Put the same Telegram token, username and webhook secret there. `.env` is ignored by Git. Configure the public webhook:
+3. Replace `database_id` in `wrangler.toml` with the ID printed for the new account. Keep `binding = "DB"`, `database_name = "study-break-checkin"` and `migrations_dir = "migrations"`. Do not reuse the existing event's ID in another account.
+4. Initialize and deploy:
 
 ```sh
-node --env-file=.env server/configure-telegram.mjs https://YOUR-WORKER.workers.dev
+npx wrangler@latest d1 migrations apply study-break-checkin --remote
+npx wrangler@latest deploy
+npx wrangler@latest secret put ADMIN_PASSWORD
 ```
 
-4. Make a new signup, choose **Get Telegram confirmation**, and press **Start** in Telegram. The bot should reply with event details and the cup reservation status. Organizer rows show **Confirmed** only after the send API reports success. No bot message is sent solely from a typed handle.
+5. Before sharing the URL, confirm HTTPS works, Organizer requires a password, and students on separate devices see the same shared totals. A brand-new `workers.dev` address may not be immediately reachable; investigate DNS/TLS if the deploy succeeds but the page does not open. Do not bypass browser certificate warnings.
+6. Update the URLs in the README, this guide, `pages/index.html` and `pages/redirect.js` to the verified new URL.
 
-Do not put a login wall in front of `/api/telegram/webhook`: Telegram must reach it via HTTPS. Requests are authenticated with the webhook secret header. Starting this bot must not also run `getUpdates` polling; Telegram polling and webhooks are mutually exclusive.
+The application and database can use Cloudflare free tiers, subject to quotas. A paid domain is not required.
 
-If the bot is not configured, registration and check-in still work. The success page explicitly says no Telegram message has been sent. Links expire after 24 hours; an expired link does not cancel the signup or cup.
+## Optional Telegram
 
-## 5. Before sharing with students
+Telegram delivery is not currently connected. Registration, check-in, cup collection and CSV export work independently.
 
-- Confirm the calendar date and update `EVENT` in `public/domain.js`. The current site says Thursday, 7–9 PM, COM1 foyer, with the date pending.
-- Verify signup, one reservation, staff check-in and cup collection using a test database before the event. Use a fresh production database when ready.
-- Confirm the food policy: cups are held for registered students until event end; no-show reservations are not automatically released.
-- Verify both organizer devices have internet and the organizer password. Check the shared totals agree.
-- Decide who retains or deletes student data after the event. Shared mode has no automatic retention policy or organizer reset button. The Pages version has a confirmed **Clear device list** action and CSV export.
+1. Create a bot using [@BotFather](https://t.me/BotFather). Keep its token private.
+2. Add these secrets interactively:
+
+```sh
+npx wrangler@latest secret put TELEGRAM_BOT_TOKEN
+npx wrangler@latest secret put TELEGRAM_BOT_USERNAME
+npx wrangler@latest secret put TELEGRAM_WEBHOOK_SECRET
+```
+
+The username has no `@` prefix. The webhook secret should be a random value containing only letters, digits, `_` or `-`.
+
+3. Copy `.env.example` to a private local `.env`, fill in the same Telegram settings, then configure the webhook:
+
+```sh
+node --env-file=.env server/configure-telegram.mjs https://study-break-checkin.study-break-checkin.workers.dev
+```
+
+4. Register, choose **Get Telegram confirmation**, open the bot and press **Start**. Verify a real reply. The app shows confirmation delivery only after the Telegram API reports success. A typed username alone does not allow DMs.
+
+The webhook must remain publicly reachable over HTTPS; it verifies its secret header. Do not run `getUpdates` polling alongside this webhook. Start links expire after 24 hours. The app does not silently treat an unconfigured or failed delivery as sent.
+
+## Event checks
+
+- Confirm the exact date in `public/domain.js`; the current site still marks it pending.
+- Open the same shared URL on two devices. After a test registration, confirm the organizer list and totals update.
+- Check physical student ID, then record attendance and cup collection separately.
+- Keep both organizer devices online and the organizer password available.
+- Export CSV for Sheets/Excel reports. Export is a snapshot, not automatic synchronization or a restorable database backup.
+- Agree on retention of student data and use Cloudflare database management for any required deletion; the shared UI has no reset button.
+- Keep a manual fallback for outages. No-show reservations are not automatically released.
 
 ## References
 
 - [Cloudflare D1 setup](https://developers.cloudflare.com/d1/get-started/)
-- [Worker static assets configuration](https://developers.cloudflare.com/workers/static-assets/binding/)
-- [D1 pricing and free limits](https://developers.cloudflare.com/d1/platform/pricing/)
+- [Worker assets](https://developers.cloudflare.com/workers/static-assets/)
+- [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/)
 - [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)
-- [Telegram bot setup](https://core.telegram.org/bots/tutorial#obtain-your-bot-token)
-- [Telegram deep links](https://core.telegram.org/bots/features#deep-linking)
+- [Telegram bot limitations](https://core.telegram.org/bots#how-are-bots-different-from-humans)

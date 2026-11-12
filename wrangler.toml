@@ -1,6 +1,7 @@
 name = "study-break-checkin"
 main = "worker.mjs"
 compatibility_date = "2026-11-01"
+workers_dev = true
 [assets]
 directory = "./public"
 binding = "ASSETS"
@@ -8,6 +9,5 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "study-break-checkin"
-# Replace after: npx wrangler d1 create study-break-checkin
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_id = "6293fb58-8690-48af-a965-7351434b53b3"
 migrations_dir = "migrations"
