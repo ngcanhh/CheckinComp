@@ -75,3 +75,6 @@ next-env.d.ts
 /.codex/
 /outputs/
 /work/
+
+# Private message draft: keep on this computer, not in the public repository.
+/docs/telegram-reply.md

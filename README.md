@@ -4,7 +4,7 @@ Phone-friendly event registration, organizer check-in and a limit of 150 bubble 
 
 **[Open the live website →](https://ngcanhh.github.io/CheckinComp/)**
 
-[Organizer desk](https://ngcanhh.github.io/CheckinComp/#organizer) · [Reply to the wing](docs/telegram-reply.md) · [Hosting guide](docs/deploy.md)
+[Organizer desk](https://ngcanhh.github.io/CheckinComp/#organizer) · [Hosting guide](docs/deploy.md)
 
 The published website saves entries in the current browser and starts with **no preloaded students**. Use one phone/browser as the event desk. Other phones have separate lists and cup totals. The repository also contains a shared backend, which requires the optional Cloudflare deployment.
 
@@ -114,7 +114,7 @@ server/             Shared API, SQLite host and optional Telegram setup
 worker.mjs          Cloudflare Worker adapter
 migrations/         Database schema and 150-cup allocation rules
 tests/              Browser, API, Worker and CSV tests
-docs/               Reply, hosting guide and current screenshots
+docs/               Hosting guide and current screenshots
 .github/workflows/  Automated checks and Pages publication
 ```
 
