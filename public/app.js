@@ -1,13 +1,15 @@
-import { demoRequest } from './demo.js';
+import { browserRequest } from './browser.js';
+import { attendeesCsv } from './export.js';
 const $ = s => document.querySelector(s);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 let mode = 'server', state, signedIn = false, attendees = [], search = '', filter = 'all', receipt;
 let refreshing = false, lastRefresh = 0, disconnected = false;
+let exporting = false;
 const pending = new Set();
 const main = $('#main');
 const isOrganizer = () => location.hash === '#organizer';
 async function api(path, method = 'GET', input) {
-  if (mode === 'demo') return demoRequest(path, method, input);
+  if (mode === 'browser') return browserRequest(path, method, input);
   let response;
   try {
     response = await fetch(new URL(`./api/${path}`, location.href), {
@@ -31,17 +33,17 @@ function renderSignup() {
   document.title = 'Study Break Night · Sign up';
   const open = state.signupOpen;
   main.innerHTML = `<div class="signup-layout"><section class="event-panel" aria-label="Event details">
-    <div class="event-topline"><span class="eyebrow">A BREAK BEFORE FINALS</span><span class="edition">01 / CAMPUS NIGHT</span></div>
-    <h1>Study<br> Break<br> <span>Night.</span></h1>
+    <div class="event-topline"><span class="eyebrow">STUDENT LIFE / COM1</span><span class="edition">STUDY BREAK</span></div>
+    <h1>Study Break<br> <span>Night</span></h1>
     <p class="event-intro">Bubble tea, snacks, and a moment<br class="desktop-only"> to catch your breath.</p>
-    ${eventDetails()}<div class="event-bottom"><span class="cup-symbol" aria-hidden="true">✳</span><div><strong>150 cups. One per student.</strong><span>Reserve yours when you sign up, while stock lasts.</span></div></div>
+    ${eventDetails()}<div class="event-bottom"><span class="cup-symbol" aria-hidden="true">150</span><div><strong>One cup per student.</strong><span>Reserve yours when you sign up, while stock lasts.</span></div></div>
   </section><section class="registration-panel" aria-labelledby="signup-title">${receipt ? receiptHtml() : `
     <div class="section-kicker"><span class="status-pill ${open ? 'open' : 'closed'}">${open ? 'Registration open' : 'Registration closed'}</span><span class="small muted">STUDENTS ONLY</span></div>
-    <h2 id="signup-title">Save your spot.</h2><p class="intro-copy">A quick signup. A well-earned study break.</p>
+    <h2 id="signup-title">Event registration</h2><p class="intro-copy">Sign up below, then bring your student ID to check in.</p>
     <div class="availability"><strong>${state.stats.available}</strong><div><b>${open ? 'cups still available to reserve' : 'cups currently unreserved'}</b><span>${!open ? 'Online signup is currently closed.' : state.stats.available ? 'Signing up reserves one for you.' : 'You can still join the event. No cup is guaranteed.'}</span></div></div>
     ${!open ? '<p class="notice" role="status">Online signup is closed. You can still check in with an organizer at the door; cups are only available from unreserved stock.</p>' : ''}
     <form id="signup-form"><fieldset ${open ? '' : 'disabled'}>
-      <label>Full name<input name="name" autocomplete="name" maxlength="80" minlength="2" required placeholder="e.g. Alex Tan"></label>
+      <label>Full name<input name="name" autocomplete="name" maxlength="80" minlength="2" required placeholder="Enter your full name"></label>
       <label>Student ID<input name="studentId" autocapitalize="characters" spellcheck="false" maxlength="24" minlength="4" required placeholder="e.g. A0123456B"><span class="field-hint">Used to find your entry and prevent duplicate cups.</span></label>
       <label>Telegram username <span class="optional">optional</span><div class="input-prefix"><span aria-hidden="true">@</span><input name="telegram" autocomplete="off" spellcheck="false" maxlength="33" placeholder="username"></div><span class="field-hint">To receive confirmation, you’ll also need to start our bot.</span></label>
       <label class="checkbox-label"><input name="student" type="checkbox" required><span>I’m a student. Organizers may use these details for event registration and check-in.</span></label>
@@ -53,12 +55,12 @@ function renderSignup() {
     button.disabled = true; button.textContent = 'Reserving your spot…'; $('#signup-error').hidden = true;
     try {
       receipt = await api('registrations', 'POST', Object.fromEntries(new FormData(form)));
-      try { sessionStorage.setItem('sb-receipt', JSON.stringify(receipt)); } catch { /* Receipt still shown in memory. */ }
+      try { sessionStorage.setItem(`${mode}-receipt-v2`, JSON.stringify(receipt)); } catch { /* Receipt still shown in memory. */ }
       try { state = await api('event'); } catch { /* Registration already succeeded: retain the confirmation. */ }
       renderSignup(); $('#receipt-title')?.focus();
     } catch (error) { errorAt('#signup-error', error.message); button.disabled = false; button.innerHTML = 'Sign me up <span aria-hidden="true">↗</span>'; }
   });
-  $('#register-another')?.addEventListener('click', () => { receipt = undefined; try { sessionStorage.removeItem('sb-receipt'); } catch {} renderSignup(); });
+  $('#register-another')?.addEventListener('click', () => { receipt = undefined; try { sessionStorage.removeItem(`${mode}-receipt-v2`); } catch {} renderSignup(); });
 }
 function receiptHtml() {
   const a = receipt.attendee;
@@ -73,10 +75,10 @@ function receiptHtml() {
 }
 function renderLogin() {
   document.title = 'Study Break Night · Organizer';
-  main.innerHTML = `<section class="login-panel"><span class="eyebrow">FOR THE PEOPLE AT THE DOOR</span><h1>Organizer desk.</h1>
+  main.innerHTML = `<section class="login-panel"><span class="eyebrow">EVENT TEAM</span><h1>Organizer sign-in</h1>
     <p>Find students, check them in, and keep every cup accounted for.</p>
-    <form id="login-form">${mode === 'demo' ? '<div class="notice">This demo uses sample information stored in this browser. Organizer access here has no password.</div>' : '<label>Organizer password<input name="password" type="password" autocomplete="current-password" required placeholder="Enter your organizer password"></label>'}
-    <p class="field-error" id="login-error" role="alert" hidden></p><button class="button primary full" type="submit">${mode === 'demo' ? 'Open demo organizer' : 'Sign in'} <span aria-hidden="true">↗</span></button></form>
+    <form id="login-form">${mode === 'browser' ? '<div class="notice">This device keeps its own attendee list. Anyone using this browser can open the organizer desk; there is no password in this version.</div>' : '<label>Organizer password<input name="password" type="password" autocomplete="current-password" required placeholder="Enter your organizer password"></label>'}
+    <p class="field-error" id="login-error" role="alert" hidden></p><button class="button primary full" type="submit">${mode === 'browser' ? 'Open organizer desk' : 'Sign in'} <span aria-hidden="true">↗</span></button></form>
     <a class="text-button" href="#signup">Back to signup</a></section>`;
   $('#login-form').addEventListener('submit', async event => {
     event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true;
@@ -86,14 +88,15 @@ function renderLogin() {
 }
 function renderOrganizer() {
   document.title = 'Study Break Night · Organizer';
-  main.innerHTML = `<section class="dashboard"><div class="dashboard-heading"><div><span class="eyebrow">${esc(state.event.venue)} / ${esc(state.event.day)} ${esc(state.event.time)}</span><h1>At the door.</h1></div>
-    <div class="heading-actions"><button class="button secondary" id="signup-toggle"></button><button class="button primary" id="add-walkin">+ Add walk-in</button></div></div>
+  main.innerHTML = `<section class="dashboard"><div class="dashboard-heading"><div><span class="eyebrow">${esc(state.event.venue)} / ${esc(state.event.day)} ${esc(state.event.time)}</span><h1>Event check-in</h1></div>
+    <div class="heading-actions"><button class="button secondary" id="export-csv">Export CSV</button><button class="button secondary" id="signup-toggle"></button><button class="button primary" id="add-walkin">+ Add walk-in</button></div></div>
     <div class="stats-grid" id="stats"></div><div class="stock-line"><p id="stock-copy"></p><meter id="cup-meter" min="0" max="150" aria-label="Cups allocated out of 150"></meter><span>150 TOTAL</span></div>
     <div class="attendees-panel"><div class="list-toolbar"><div><h2>Attendees <span id="list-count"></span></h2><p>Check student ID before check-in and cup collection.</p></div><label class="search-label"><span class="sr-only">Search name, student ID or Telegram</span><input id="search" type="search" placeholder="Search name or student ID…" autocomplete="off"></label></div>
     <div class="list-controls"><div class="filters" role="group" aria-label="Filter attendees"><button data-filter="all" class="active">All</button><button data-filter="waiting">Not checked in</button><button data-filter="here">Checked in</button><button data-filter="walkins">Walk-ins</button></div><div id="sync-status" role="status"></div></div>
     <div id="connection-error" class="notice error-notice" role="alert" hidden></div>
     <table class="attendee-table"><thead><tr><th scope="col">Student</th><th scope="col">Attendance</th><th scope="col">Bubble tea</th><th scope="col" class="action-column">Next action</th></tr></thead><tbody id="attendee-rows"></tbody></table>
-    <div id="empty-state" hidden></div></div><div class="dashboard-footer"><div>${mode === 'demo' ? '<button class="text-button" id="load-samples">Load sample attendees</button><button class="text-button danger-text" id="reset-demo">Reset demo</button>' : '<span class="small muted">Changes are saved to the shared event database.</span>'}</div><button class="text-button" id="sign-out">Sign out</button></div></section>`;
+    <div id="empty-state" hidden></div></div><p class="export-help">Export CSV downloads the full attendee list for Google Sheets or Excel. It is a snapshot; later changes are saved in the app.</p><div class="dashboard-footer"><div>${mode === 'browser' ? '<span class="small muted">Entries are saved on this device.</span><button class="text-button danger-text" id="clear-device">Clear device list</button>' : '<span class="small muted">Changes are saved to the shared event database.</span>'}</div><button class="text-button" id="sign-out">Sign out</button></div></section>`;
+  $('#export-csv').addEventListener('click', exportAttendees);
   $('#search').value = search;
   $('#search').addEventListener('input', event => { search = event.target.value; renderRows(); });
   document.querySelectorAll('[data-filter]').forEach(button => button.addEventListener('click', () => { filter = button.dataset.filter; renderRows(); }));
@@ -106,8 +109,7 @@ function renderOrganizer() {
   $('#sign-out').addEventListener('click', async () => {
     try { await api('session', 'DELETE'); signedIn = false; attendees = []; renderLogin(); } catch (error) { toast(error.message, true); }
   });
-  $('#load-samples')?.addEventListener('click', async () => { try { await api('admin/samples', 'POST'); await refreshOrganizer(); } catch (e) { toast(e.message, true); } });
-  $('#reset-demo')?.addEventListener('click', async () => { if (confirm('Clear all signup and check-in data in this browser demo?')) { await api('admin/reset', 'POST'); receipt = undefined; try { sessionStorage.removeItem('sb-receipt'); } catch {} await refreshOrganizer(); } });
+  $('#clear-device')?.addEventListener('click', async () => { if (confirm('Delete all attendees and cup records saved in this browser? Export CSV first if you need a copy.')) { await api('admin/reset', 'POST'); receipt = undefined; try { sessionStorage.removeItem(`${mode}-receipt-v2`); } catch {} await refreshOrganizer(); } });
   updateDashboard();
 }
 function updateDashboard() {
@@ -120,10 +122,29 @@ function updateDashboard() {
   $('#cup-meter').value = s.reserved + s.collected;
   const toggle = $('#signup-toggle'); toggle.textContent = `${state.signupOpen ? 'Close' : 'Open'} signup`; toggle.disabled = disconnected;
   $('#add-walkin').disabled = disconnected;
-  $('#sync-status').textContent = disconnected ? 'Connection lost' : mode === 'demo' ? 'Saved in this browser' : 'Shared data · updates every 5s';
+  $('#export-csv').disabled = disconnected || exporting;
+  $('#export-csv').textContent = exporting ? 'Exporting…' : 'Export CSV';
+  $('#sync-status').textContent = disconnected ? 'Connection lost' : mode === 'browser' ? 'Saved in this browser' : 'Shared data · updates every 5s';
   $('#connection-error').hidden = !disconnected;
   $('#connection-error').textContent = 'Updates paused. Reconnect before handing out cups. Your last saved list is shown below.';
   renderRows();
+}
+async function exportAttendees() {
+  if (exporting || disconnected) return;
+  exporting = true; updateDashboard();
+  try {
+    // Always fetch a fresh, authenticated full list, regardless of search/filter.
+    const snapshot = await api('admin/attendees');
+    if (!signedIn) return;
+    const url = URL.createObjectURL(new Blob([attendeesCsv(snapshot.attendees)], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Singapore' }).format(new Date());
+    link.href = url; link.download = `study-break-${mode === 'browser' ? 'device-' : ''}attendees-${date}.csv`;
+    document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast(`Exported ${snapshot.attendees.length} attendees. Open the CSV in Google Sheets or Excel.`);
+  } catch (error) { toast(`Export failed: ${error.message}`, true); }
+  finally { exporting = false; updateDashboard(); }
 }
 function renderRows() {
   if (!$('#attendee-rows')) return;
@@ -144,7 +165,7 @@ function renderRows() {
       <td data-label="Bubble tea"><span class="badge ${a.collectedAt ? 'collected' : a.cupNumber ? 'reserved' : 'no-reservation'}">${a.collectedAt ? `Collected #${a.cupNumber}` : a.cupNumber ? `Reserved #${a.cupNumber}` : 'No reservation'}</span></td><td class="action-cell">${action}</td></tr>`;
   }).join('');
   const empty = $('#empty-state'); empty.hidden = list.length > 0;
-  empty.innerHTML = attendees.length ? '<h3>No matching students.</h3><p>Try their full student ID or clear the filters.</p>' : '<span class="empty-mark" aria-hidden="true">↳</span><h3>The list starts here.</h3><p>Share the signup page, or add your first walk-in at the door.</p>';
+  empty.innerHTML = attendees.length ? '<h3>No matching students.</h3><p>Try their full student ID or clear the filters.</p>' : `<span class="empty-mark" aria-hidden="true">↳</span><h3>No attendees yet</h3><p>${mode === 'browser' ? 'Register students on this device, or add a walk-in at the door.' : 'Share the signup page, or add your first walk-in at the door.'}</p>`;
   document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => performAction(button.dataset.id, button.dataset.action)));
 }
 async function performAction(id, action) {
@@ -193,7 +214,7 @@ $('#walkin-form').addEventListener('submit', async event => {
 });
 window.addEventListener('hashchange', route);
 $('.skip-link').addEventListener('click', event => { event.preventDefault(); main.focus(); main.scrollIntoView({ block: 'start' }); });
-window.addEventListener('storage', () => { if (mode === 'demo' && signedIn && isOrganizer()) refreshOrganizer(); });
+window.addEventListener('storage', () => { if (mode === 'browser' && signedIn && isOrganizer()) refreshOrganizer(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && signedIn && isOrganizer()) refreshOrganizer(); });
 setInterval(() => { if (signedIn && isOrganizer() && !document.hidden) refreshOrganizer(); }, 5000);
 setInterval(() => { if (mode === 'server' && signedIn && Date.now() - lastRefresh > 16000 && !disconnected) { disconnected = true; updateDashboard(); } }, 3000);
@@ -202,12 +223,12 @@ async function boot() {
     const response = await fetch('./deployment.json', { cache: 'no-store' });
     if (!response.ok) throw new Error('Deployment configuration is missing.');
     mode = (await response.json()).mode;
-    if (mode !== 'demo' && mode !== 'server') throw new Error('Unknown deployment mode.');
-    if (mode === 'demo') {
-      $('#demo-banner').hidden = false;
-      $('#demo-banner').innerHTML = '<strong>INTERACTIVE DEMO</strong><span>Saved only in this browser. Use sample details; devices do not sync.</span><a href="https://github.com/ngcanhh/CheckinComp#run-the-shared-version">Run the shared version ↗</a>';
+    if (mode !== 'browser' && mode !== 'server') throw new Error('Unknown deployment mode.');
+    if (mode === 'browser') {
+      $('#storage-banner').hidden = false;
+      $('#storage-banner').innerHTML = '<strong>THIS DEVICE</strong><span>Entries stay in this browser. Other phones have separate lists.</span><a href="https://github.com/ngcanhh/CheckinComp#data-storage">How data is stored ↗</a>';
     }
-    try { receipt = JSON.parse(sessionStorage.getItem('sb-receipt')); } catch {}
+    try { receipt = JSON.parse(sessionStorage.getItem(`${mode}-receipt-v2`)); } catch {}
     await route();
   } catch (error) { main.innerHTML = `<section class="login-panel"><h1>Unable to start.</h1><p>${esc(error.message)}</p><p>Refresh the page after the connection is restored.</p></section>`; }
 }

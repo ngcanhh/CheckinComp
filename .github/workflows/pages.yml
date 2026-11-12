@@ -1,4 +1,4 @@
-name: Publish browser demo
+name: Publish Study Break Night
 on:
   push:
     branches: [main, codex/event-checkin]
@@ -18,17 +18,22 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm run check
+      - run: npm test
       - uses: actions/configure-pages@v5
-      - name: Prepare the explicit single-browser demo
+      - name: Prepare the device-storage website
         shell: bash
         run: |
           mkdir -p _site
-          cp public/index.html public/app.js public/demo.js public/domain.js public/styles.css public/theme.css public/favicon.svg _site/
-          printf '{"mode":"demo"}\n' > _site/deployment.json
+          cp public/index.html public/app.js public/browser.js public/domain.js public/export.js public/styles.css public/theme.css public/favicon.svg _site/
+          printf '{"mode":"browser"}\n' > _site/deployment.json
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v4
         with:
           path: _site
-      - name: Deploy demo
+      - name: Deploy website
         id: deployment
         uses: actions/deploy-pages@v4

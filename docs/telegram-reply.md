@@ -1,7 +1,7 @@
 # Part 1: reply to the wing
 
-Hey! I’ll build a phone-friendly signup and staff check-in site 😊 Can you confirm the event date and whether it’s 7–9pm at COM1 foyer? Who’ll manage the door, are there eligibility rules, and when should signup close?
+Hey! I’ll put a phone-friendly signup and check-in page online. Can you confirm the date, 7–9pm at COM1 foyer, who’s on the door, and when signup should close?
 
-People can register with their name, student ID and Telegram handle. A cup is reserved while stock remains; walk-ins can claim unreserved cups, one per student. Organisers can open/close signup, see totals, and track attendance separately from cup collection, with a shared 150-cup limit.
+For the first version, use one organizer phone: its browser stores the list, attendance and cup totals. People can register there with name, student ID and optional Telegram username. The first 150 available cups are reserved; walk-ins can collect only unreserved stock. Organizers can search, add walk-ins, close signup and export CSV for Sheets/Excel. Check-in and cup collection are separate.
 
-After signup, people see a thank-you and event details. Telegram confirmation requires them to start our bot first; a handle alone isn’t enough. I’ll keep the design simple and skip the stamp rally for this version.
+The blue-and-orange page shows confirmation and event details. Telegram needs a configured bot and the student pressing Start, so it won’t claim messages were sent. Multi-phone synchronization needs the optional shared backend. I’ll leave the stamp rally out for now.

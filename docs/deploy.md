@@ -1,6 +1,18 @@
-# Deploy the shared version to Cloudflare
+# Hosting Study Break Night
 
-The GitHub Pages link is a **single-browser demo**. For students to register on their own phones and organizers to see the same list on one or two devices, deploy the complete Worker + D1 version below. The app and database can use Cloudflare's free tiers, subject to their current limits. No paid add-ons or custom domain are needed.
+## Public website: GitHub Pages
+
+**Live URL:** https://ngcanhh.github.io/CheckinComp/
+
+The blue/orange app starts without preloaded students and stores entries in the current browser. It supports registration, check-in, a 150-cup limit on that device, walk-ins and CSV export. It does not share lists between phones, require an organizer password or send Telegram messages. Use one event desk device.
+
+The `.github/workflows/pages.yml` workflow publishes from `codex/event-checkin` or `main`. It checks syntax, runs tests and copies the complete frontend including `browser.js` and `export.js`. Only the Pages artifact receives `deployment.json` with `mode: "browser"`; the local/shared app keeps `mode: "server"`.
+
+After pushing, wait for **Publish Study Break Night** in GitHub Actions. Open the website and check **Organizer → Open organizer desk**. There is no student-seeding button. Older fixture records are removed on upgrade, while manually entered entries are retained.
+
+## Shared hosting: Cloudflare Workers + D1
+
+For students to register on their own phones and organizers to see one shared list, deploy the Worker + D1 version below. The app and database can use Cloudflare's free tiers, subject to their current limits. No paid add-ons or custom domain are needed. This is a separate deployment from GitHub Pages.
 
 ## 1. Create an account and sign in
 
@@ -35,7 +47,7 @@ npx wrangler secret put ADMIN_PASSWORD
 
 Enter a strong password at the prompt. Give it only to the organizers; both devices can use the same password with independent sessions. Complete this step **before sharing the site**. The organizer API refuses login until this secret exists.
 
-Open the `workers.dev` URL printed by Wrangler. Verify signup on one phone and check-in on a second device. Use this URL for the actual event, rather than the GitHub Pages demo. There is no separate frontend build or CORS configuration.
+Open the `workers.dev` URL printed by Wrangler. Verify signup on one phone and check-in on a second device. Use this URL for a shared event database. There is no separate frontend build or CORS configuration. It starts without student fixtures. Update the README's primary link only after verifying this deployment.
 
 To publish edits later, run `npx wrangler deploy` again. Run migrations again only when adding a new migration. The D1 database survives Worker deployments.
 
@@ -64,11 +76,11 @@ If the bot is not configured, registration and check-in still work. The success 
 
 ## 5. Before sharing with students
 
-- Confirm the calendar date and update `EVENT` in `public/domain.js`. The current demo says Thursday, 7–9 PM, COM1 foyer, with the date pending.
+- Confirm the calendar date and update `EVENT` in `public/domain.js`. The current site says Thursday, 7–9 PM, COM1 foyer, with the date pending.
 - Verify signup, one reservation, staff check-in and cup collection using a test database before the event. Use a fresh production database when ready.
 - Confirm the food policy: cups are held for registered students until event end; no-show reservations are not automatically released.
 - Verify both organizer devices have internet and the organizer password. Check the shared totals agree.
-- Decide who retains or deletes student data after the event. The app has no automatic retention policy or destructive organizer reset button.
+- Decide who retains or deletes student data after the event. Shared mode has no automatic retention policy or organizer reset button. The Pages version has a confirmed **Clear device list** action and CSV export.
 
 ## References
 

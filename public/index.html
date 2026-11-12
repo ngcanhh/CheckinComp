@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#132526">
+  <meta name="theme-color" content="#003d7c">
   <meta name="description" content="Sign up for Study Break Night, reserve a bubble tea and check in with the organizers.">
   <title>Study Break Night · Sign up</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
@@ -12,7 +12,7 @@
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <div id="demo-banner" hidden></div>
+  <div id="storage-banner" hidden></div>
   <header class="site-header">
     <a class="brand" href="#signup" aria-label="Study Break home"><span class="brand-mark">sb.</span><span>STUDY<br>BREAK</span></a>
     <nav aria-label="Main navigation"><a href="#signup" id="signup-nav">Sign up</a><a href="#organizer" id="organizer-nav">Organizer <span aria-hidden="true">↗</span></a></nav>
@@ -24,7 +24,7 @@
     <div class="dialog-heading"><div><span class="eyebrow">DOOR CHECK-IN</span><h2 id="walkin-title">Add a walk-in</h2></div><button type="button" class="icon-button" id="close-dialog" aria-label="Close dialog">×</button></div>
     <p>Already registered? Find their student ID in the attendee list first.</p>
     <form id="walkin-form">
-      <label>Full name<input name="name" autocomplete="name" maxlength="80" minlength="2" required placeholder="e.g. Alex Tan"></label>
+      <label>Full name<input name="name" autocomplete="name" maxlength="80" minlength="2" required placeholder="Enter your full name"></label>
       <label>Student ID<input name="studentId" autocapitalize="characters" spellcheck="false" maxlength="24" minlength="4" required placeholder="e.g. A0123456B"></label>
       <label>Telegram username <span class="optional">optional</span><input name="telegram" autocomplete="off" spellcheck="false" maxlength="33" placeholder="@username"></label>
       <p class="field-error" id="walkin-error" role="alert" hidden></p>
